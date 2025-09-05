@@ -561,6 +561,7 @@ app.get("/health", (req, res) => {
   res.json({
     status: "OK",
     message: "InviteFlow – Event Invitation Automation API is running",
+    base_url: BASE_URL,
   });
 });
 
