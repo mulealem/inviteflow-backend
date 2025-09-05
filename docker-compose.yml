@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  backend:
+    container_name: foxit-api-backend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Map unique backend port
+    ports:
+      - "3087:3087"
+    # Load secrets and config from .env (if present)
+    env_file:
+      - .env
+    environment:
+      # Safe defaults; .env will override in local/dev
+      NODE_ENV: production
+      PORT: 3087
+      # BASE_URL should be your public API URL in prod (Coolify)
+      # For local dev it can be http://localhost:3087
+      BASE_URL: ${BASE_URL:-http://localhost:3087}
+      # CORS_ORIGIN should include your Netlify site URL
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      # Foxit credentials (expected in .env or Coolify env)
+      FOXIT_CLIENT_ID: ${FOXIT_CLIENT_ID}
+      FOXIT_CLIENT_SECRET: ${FOXIT_CLIENT_SECRET}
+      FOXIT_BASE_URL: ${FOXIT_BASE_URL:-https://na1.fusion.foxit.com}
+    volumes:
+      # Persist temporary files across container restarts (optional)
+      - uploads_data:/app/uploads
+
+volumes:
+  uploads_data:
+    driver: local

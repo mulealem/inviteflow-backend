@@ -1,0 +1,16 @@
+# Ignore node modules and logs
+node_modules
+npm-debug.log
+
+# Git
+.git
+.gitignore
+
+# Local env and uploads (uploads recreated in container)
+.env
+uploads/*
+!uploads/.gitkeep
+
+# OS/editor
+.DS_Store
+.vscode

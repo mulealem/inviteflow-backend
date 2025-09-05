@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InviteFlow – Event Invitation Automation</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+      h1 {
+        color: #333;
+        text-align: center;
+      }
+      button {
+        cursor: pointer;
+        font-size: 16px;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+      button:disabled {
+        background-color: #6c757d;
+        cursor: not-allowed;
+      }
+      .result {
+        margin-top: 20px;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        border-left: 4px solid #007bff;
+      }
+      .error {
+        background-color: #f8d7da;
+        border-left-color: #dc3545;
+        color: #721c24;
+      }
+      .success {
+        background-color: #d4edda;
+        border-left-color: #28a745;
+        color: #155724;
+      }
+      .loading {
+        display: none;
+        text-align: center;
+        margin: 20px 0;
+      }
+      .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #3498db;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 2s linear infinite;
+        margin: 0 auto;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      .download-btn {
+        background-color: #28a745;
+        margin: 10px 5px;
+      }
+      .download-btn:hover {
+        background-color: #218838;
+      }
+      code {
+        background-color: #f1f1f1;
+        padding: 2px 5px;
+        border-radius: 3px;
+        font-family: "Courier New", monospace;
+      }
+      .csv-preview {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 15px;
+        margin: 10px 0;
+        font-family: "Courier New", monospace;
+        white-space: pre-wrap;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>InviteFlow – Event Invitation Automation</h1>
+    <!-- Auth UI removed -->
+
+    <div class="container">
+      <div class="step">
+        <h2>Step 1: Analyze Template</h2>
+        <form id="analyzeForm">
+          <div class="form-group">
+            <label for="templateFile1">DOCX Template:</label>
+            <input type="file" id="templateFile1" accept=".docx" required />
+          </div>
+          <button type="submit">Analyze Template</button>
+        </form>
+
+        <div class="loading" id="loading1">
+          <div class="spinner"></div>
+          <p>Analyzing template...</p>
+        </div>
+
+        <div id="analyzeResult"></div>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="step">
+        <h2>Step 2: Generate Documents</h2>
+        <p>
+          Upload your DOCX template and populated CSV file to generate PDFs with
+          QR codes.
+        </p>
+
+        <form id="generateForm">
+          <div class="form-group">
+            <label for="templateFile2">DOCX Template:</label>
+            <input type="file" id="templateFile2" accept=".docx" required />
+          </div>
+          <div class="form-group">
+            <label for="csvFile">Populated CSV File:</label>
+            <input type="file" id="csvFile" accept=".csv" required />
+          </div>
+          <button type="submit">Generate Documents</button>
+        </form>
+
+        <div class="loading" id="loading2">
+          <div class="spinner"></div>
+          <p>
+            Generating documents... This may take a while for large CSV files.
+          </p>
+        </div>
+
+        <div id="generateResult"></div>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE = window.location.origin;
+
+      // Step 1: Analyze Template
+      document
+        .getElementById("analyzeForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const loading = document.getElementById("loading1");
+          const resultDiv = document.getElementById("analyzeResult");
+          const fileInput = document.getElementById("templateFile1");
+
+          if (!fileInput.files[0]) {
+            showResult(
+              resultDiv,
+              "Please select a DOCX template file.",
+              "error"
+            );
+            return;
+          }
+
+          loading.style.display = "block";
+          resultDiv.innerHTML = "";
+
+          const formData = new FormData();
+          formData.append("template", fileInput.files[0]);
+
+          try {
+            const response = await fetch(`${API_BASE}/analyze-template`, {
+              method: "POST",
+              body: formData,
+            });
+
+            const result = await response.json();
+            loading.style.display = "none";
+
+            if (result.success) {
+              showResult(
+                resultDiv,
+                `
+                        <h3>Template Analysis Complete!</h3>
+                        <p><strong>Variables found:</strong> ${result.variables.join(
+                          ", "
+                        )}</p>
+                        <p><strong>CSV Structure:</strong></p>
+                        <div class="csv-preview">${result.csvContent}</div>
+                        <p>Copy this CSV structure and populate it with your data for Step 2.</p>
+                    `,
+                "success"
+              );
+            } else {
+              showResult(resultDiv, `Error: ${result.error}`, "error");
+            }
+          } catch (error) {
+            loading.style.display = "none";
+            showResult(resultDiv, `Error: ${error.message}`, "error");
+          }
+        });
+
+      // Step 2: Generate Documents
+      document
+        .getElementById("generateForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const loading = document.getElementById("loading2");
+          const resultDiv = document.getElementById("generateResult");
+          const templateInput = document.getElementById("templateFile2");
+          const csvInput = document.getElementById("csvFile");
+
+          if (!templateInput.files[0] || !csvInput.files[0]) {
+            showResult(
+              resultDiv,
+              "Please select both template and CSV files.",
+              "error"
+            );
+            return;
+          }
+
+          loading.style.display = "block";
+          resultDiv.innerHTML = "";
+
+          const formData = new FormData();
+          formData.append("template", templateInput.files[0]);
+          formData.append("csvFile", csvInput.files[0]);
+
+          try {
+            const response = await fetch(`${API_BASE}/generate-documents`, {
+              method: "POST",
+              body: formData,
+            });
+
+            const result = await response.json();
+            loading.style.display = "none";
+
+            if (result.success) {
+              showResult(
+                resultDiv,
+                `
+                        <h3>Documents Generated Successfully!</h3>
+                        <p><strong>Total Documents:</strong> ${
+                          result.totalDocuments
+                        }</p>
+                        <p><strong>Individual Documents:</strong> ${
+                          result.individualDocuments.length
+                        }</p>
+                        <p><strong>Merged Document ID:</strong> <code>${
+                          result.mergedDocumentId
+                        }</code></p>
+                        <div>
+                            <button class="download-btn" onclick="downloadDocument('${
+                              result.mergedDocumentId
+                            }', 'merged-documents')">
+                                Download Merged PDF
+                            </button>
+                            ${
+                              result.zipUrl
+                                ? `<a class="download-btn" style="display:inline-block;padding:12px 24px;text-decoration:none" href="${result.zipUrl}" target="_blank">Download ZIP</a>`
+                                : ""
+                            }
+                        </div>
+                        <p><em>Each PDF includes a QR code that can be customized in the server code.</em></p>
+                    `,
+                "success"
+              );
+            } else {
+              showResult(resultDiv, `Error: ${result.error}`, "error");
+            }
+          } catch (error) {
+            loading.style.display = "none";
+            showResult(resultDiv, `Error: ${error.message}`, "error");
+          }
+        });
+
+      function showResult(container, message, type) {
+        container.innerHTML = `<div class="result ${type}">${message}</div>`;
+      }
+
+      function downloadDocument(documentId, filename) {
+        const url = `${API_BASE}/download/${documentId}?filename=${filename}`;
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${filename}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+
+      async function downloadBatchZip(batchId) {
+        if (!batchId) return alert("Missing batchId");
+        try {
+          const resp = await fetch(`${API_BASE}/batches/${batchId}/zip`);
+          if (!resp.ok) {
+            let txt = "";
+            try {
+              txt = await resp.text();
+            } catch (e) {
+              txt = "";
+            }
+            throw new Error(`Zip failed (${resp.status}) ${txt}`);
+          }
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `batch_${batchId}.zip`;
+          document.body.appendChild(a);
+          a.click();
+          URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } catch (e) {
+          alert(`Download ZIP error: ${e.message}`);
+        }
+      }
+
+      // Check server health on load
+      window.addEventListener("load", async () => {
+        try {
+          const response = await fetch(`${API_BASE}/health`);
+          const result = await response.json();
+          console.log("Server status:", result);
+        } catch (error) {
+          console.error("Server connection error:", error);
+          alert(
+            "Cannot connect to server. Make sure the server is running on port 3008."
+          );
+        }
+      });
+      // Extra utilities UI for new APIs
+    </script>
+    <script>
+      function openTokenFromInput() {
+        const t = document.getElementById("qrTokenInput").value.trim();
+        if (!t) return alert("Enter token");
+        window.open(`${window.location.origin}/view/${t}`, "_blank");
+      }
+
+      async function downloadTokenFromInput() {
+        const t = document.getElementById("qrTokenInput").value.trim();
+        if (!t) return alert("Enter token");
+        try {
+          const resp = await fetch(`${window.location.origin}/view/${t}/file`);
+          if (!resp.ok) {
+            const txt = await resp.text().catch(function () {
+              return "";
+            });
+            throw new Error(`Download failed (${resp.status}) ${txt}`);
+          }
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `invitation_${t}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } catch (e) {
+          alert(`Download error: ${e.message}`);
+        }
+      }
+    </script>
+    <div class="container">
+      <div class="step">
+        <h2>Extras: Download & View Utilities</h2>
+        <div class="form-group">
+          <label for="mergedIdInput">Merged Document ID</label>
+          <input
+            id="mergedIdInput"
+            placeholder="mergedDocumentId"
+            style="width: 100%; padding: 10px"
+          />
+          <button
+            style="margin-top: 10px"
+            onclick="(function(){
+            const id = document.getElementById('mergedIdInput').value.trim();
+            if(!id) return alert('Enter mergedDocumentId');
+            downloadDocument(id, 'merged-documents');
+          })()"
+          >
+            Download Merged PDF
+          </button>
+        </div>
+        <div class="form-group">
+          <label for="batchIdInput">Batch ID</label>
+          <input
+            id="batchIdInput"
+            placeholder="batchId"
+            style="width: 100%; padding: 10px"
+          />
+          <button
+            style="margin-top: 10px"
+            onclick="(function(){
+            const id = document.getElementById('batchIdInput').value.trim();
+            if(!id) return alert('Enter batchId');
+            downloadBatchZip(id);
+          })()"
+          >
+            Download ZIP
+          </button>
+        </div>
+        <div class="form-group">
+          <label for="qrTokenInput">QR Token</label>
+          <input
+            id="qrTokenInput"
+            placeholder="qr token"
+            style="width: 100%; padding: 10px"
+          />
+          <div style="margin-top: 10px">
+            <button onclick="openTokenFromInput()">Open View Page</button>
+            <button style="margin-left: 8px" onclick="downloadTokenFromInput()">
+              Download PDF
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Install backend deps after pg removal",
+			"type": "shell",
+			"command": "npm ci || npm install",
+			"args": [],
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}
