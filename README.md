@@ -33,7 +33,7 @@ npm install
 npm start
 ```
 
-Open http://localhost:3008.
+Open http://localhost:3087.
 
 ## API Endpoints
 
@@ -137,8 +137,8 @@ Downloads a generated PDF document.
 
 ## Environment Variables
 
-- `PORT` - Server port (default: 3008)
-- `BASE_URL` - Public base URL for QR links (default: http://localhost:3008)
+- `PORT` - Server port (default: 3087)
+- `BASE_URL` - Public base URL for QR links (default: http://localhost:3087)
 - `FOXIT_CLIENT_ID`, `FOXIT_CLIENT_SECRET`, `FOXIT_BASE_URL`
 - `CORS_ORIGIN` - Allowed origins (comma separated or `*`)
 
@@ -162,3 +162,98 @@ foxit-api-document-generator/
 - Files are temporarily stored in the `uploads/` directory and cleaned up after processing
 - QR code URLs use BASE_URL and unique tokens, and a simple viewer is built-in
 - File size limit is set to 50MB for uploads
+
+## Foxit API Integration
+
+This service integrates with Foxit PDF Services and Document Generation APIs to analyze DOCX templates, generate PDFs from data, and post-process PDFs (adding QR pages and merging). Authentication is provided via `client_id` and `client_secret` HTTP headers; no OAuth flow is required.
+
+Key Foxit endpoints used:
+
+- Analyze template variables
+
+  - Method: POST
+  - Path: `/document-generation/api/AnalyzeDocumentBase64`
+  - Input: `{ base64FileString }` from the uploaded DOCX
+  - Output: `singleTagsString` (comma-separated placeholders found in the template)
+
+- Generate a PDF from template + data
+
+  - Method: POST
+  - Path: `/document-generation/api/GenerateDocumentBase64`
+  - Input: `{ outputFormat: "pdf", currencyCulture: "en-US", documentValues, base64FileString }`
+  - Output: `{ base64FileString }` of the generated PDF
+
+- Upload a file to Foxit (used for QR image and original PDF)
+
+  - Method: POST
+  - Path: `/pdf-services/api/documents/upload`
+  - Input: multipart/form-data with `file`
+  - Output: `{ documentId }`
+
+- Create a PDF from an image (to turn QR PNG into a PDF page)
+
+  - Method: POST
+  - Path: `/pdf-services/api/documents/create/pdf-from-image`
+  - Input: `{ documentId }` (from the uploaded QR image)
+  - Output: `{ taskId }` to be polled
+
+- Combine PDFs (used twice: original PDF + QR page, then final merged batch)
+
+  - Method: POST
+  - Path: `/pdf-services/api/documents/enhance/pdf-combine`
+  - Input: `{ documentInfos: [{ documentId }...], config }`
+  - Output: `{ taskId }` to be polled
+
+- Task status polling
+
+  - Method: GET
+  - Path: `/pdf-services/api/tasks/{taskId}`
+  - Output on success: `{ status: "COMPLETED", resultDocumentId }`
+
+- Download final PDFs
+  - Method: GET
+  - Path: `/pdf-services/api/documents/{documentId}/download?filename=...`
+  - Response: PDF stream
+
+Headers for all Foxit API calls include:
+
+```
+client_id: ${FOXIT_CLIENT_ID}
+client_secret: ${FOXIT_CLIENT_SECRET}
+```
+
+Flow overview:
+
+1. Analyze template
+
+   - DOCX is read and converted to base64
+   - Foxit AnalyzeDocumentBase64 returns the list of tags, which we map to a CSV header
+
+2. Generate per-row PDF + add QR
+
+   - For each CSV row, GenerateDocumentBase64 returns a base64 PDF
+   - A QR code is generated locally (PNG) that points to `BASE_URL/view/:token`
+   - The QR PNG is uploaded to Foxit, converted into a single-page PDF
+   - The original PDF and QR PDF are combined into a single document via `pdf-combine`
+   - The resulting `resultDocumentId` is stored in-memory and associated with the view token
+
+3. Merge all PDFs
+
+   - All per-row document IDs are combined via `pdf-combine` with bookmarks/TOC enabled
+   - We poll the task until `COMPLETED` and return the merged `resultDocumentId`
+
+4. Downloads and ZIP
+   - Single downloads proxy the Foxit download API
+   - Batch ZIP is streamed by downloading each PDF from Foxit and archiving on-the-fly
+
+Timeouts and limits:
+
+- Upload size limit: 50 MB per file (configurable in multer)
+- Task polling: up to ~60 seconds (30 attempts x 2s); adjust in `waitForTaskCompletion()` if needed
+- Merge config sets `continueMergeOnError: true` to avoid failing the entire batch when one input is problematic
+
+Security & deployment notes:
+
+- Set `FOXIT_CLIENT_ID`/`FOXIT_CLIENT_SECRET` via environment variables (do not commit them)
+- `BASE_URL` should be the public URL of your backend in production so QR links in PDFs work for recipients
+- `CORS_ORIGIN` should include your Netlify site URL for the frontend to call this API from the browser
